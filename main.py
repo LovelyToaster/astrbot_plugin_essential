@@ -46,10 +46,42 @@ class Main(Star):
         ]
 
         self.search_anmime_demand_users = {}
+        self.daily_sleep_cache = {}
+        self.good_morning_cd = {} 
 
     def time_convert(self, t):
         m, s = divmod(t, 60)
         return f"{int(m)}分{int(s)}秒"
+    
+    def get_cached_sleep_count(self, umo_id: str, date_str: str) -> int:
+        """获取缓存的睡觉人数"""
+        if umo_id not in self.daily_sleep_cache:
+            self.daily_sleep_cache[umo_id] = {}
+        return self.daily_sleep_cache[umo_id].get(date_str, -1)
+
+    def update_sleep_cache(self, umo_id: str, date_str: str, count: int):
+        """更新睡觉人数缓存"""
+        if umo_id not in self.daily_sleep_cache:
+            self.daily_sleep_cache[umo_id] = {}
+        self.daily_sleep_cache[umo_id][date_str] = count
+
+    def invalidate_sleep_cache(self, umo_id: str, date_str: str):
+            """使缓存失效"""
+            if umo_id in self.daily_sleep_cache and date_str in self.daily_sleep_cache[umo_id]:
+                del self.daily_sleep_cache[umo_id][date_str]
+
+    def check_good_morning_cd(self, user_id: str, current_time: datetime.datetime) -> bool:
+        """检查用户是否在CD中，返回True表示在CD中"""
+        if user_id not in self.good_morning_cd:
+            return False
+        
+        last_time = self.good_morning_cd[user_id]
+        time_diff = (current_time - last_time).total_seconds()
+        return time_diff < 1800  # 硬编码30分钟
+
+    def update_good_morning_cd(self, user_id: str, current_time: datetime.datetime):
+        """更新用户的CD时间"""
+        self.good_morning_cd[user_id] = current_time
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def handle_search_anime(self, message: AstrMessageEvent):
@@ -411,8 +443,12 @@ class Main(Star):
         umo_id = message.unified_msg_origin
         user_id = message.message_obj.sender.user_id
         user_name = message.message_obj.sender.nickname
-        curr_utc8 = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        curr_utc8 = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
         curr_human = curr_utc8.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 检查CD
+        if self.check_good_morning_cd(user_id, curr_utc8):
+            return CommandResult().message("你刚刚已经说过早安/晚安了，请30分钟后再试喵~").use_t2i(False)
 
         is_night = "晚安" in message.message_str
 
@@ -441,10 +477,15 @@ class Main(Star):
 
         with open(f"data/{self.PLUGIN_NAME}_data.json", "w", encoding="utf-8") as f:
             f.write(json.dumps(self.good_morning_data, ensure_ascii=False, indent=2))
+            
+        # 更新CD
+        self.update_good_morning_cd(user_id, curr_utc8)
 
         # 根据 day 判断今天是本群第几个睡觉的
-        # TODO: 此处可以缓存
         curr_day: int = curr_utc8.day
+        curr_date_str = curr_utc8.strftime("%Y-%m-%d")
+
+        self.invalidate_sleep_cache(umo_id, curr_date_str)
         curr_day_sleeping = 0
         for v in umo.values():
             if v["daily"]["night_time"] and not v["daily"]["morning_time"]:
@@ -453,12 +494,13 @@ class Main(Star):
                     v["daily"]["night_time"], "%Y-%m-%d %H:%M:%S"
                 ).day
                 if user_day == curr_day:
-                    # 今天睡觉的人数
                     curr_day_sleeping += 1
+        
+        # 更新缓存为最新计算结果
+        self.update_sleep_cache(umo_id, curr_date_str, curr_day_sleeping)
 
         if not is_night:
             # 计算睡眠时间: xx小时xx分
-            # 此处可以联动 TODO
             sleep_duration_human = ""
             if user["daily"]["night_time"]:
                 night_time = datetime.datetime.strptime(
@@ -475,16 +517,15 @@ class Main(Star):
             return (
                 CommandResult()
                 .message(
-                    f"早安喵，{user_name}！\n现在是 {curr_human}，昨晚你睡了 {sleep_duration_human}。"
+                    f"早上好喵，{user_name}！\n现在是 {curr_human}，昨晚你睡了 {sleep_duration_human}。"
                 )
                 .use_t2i(False)
             )
         else:
-            # 此处可以联动 TODO
             return (
                 CommandResult()
                 .message(
-                    f"晚安喵，{user_name}！\n现在是 {curr_human}，你是本群今天第 {curr_day_sleeping} 个睡觉的。"
+                    f"快睡觉喵，{user_name}！\n现在是 {curr_human}，你是本群今天第 {curr_day_sleeping} 个睡觉的。"
                 )
                 .use_t2i(False)
             )
