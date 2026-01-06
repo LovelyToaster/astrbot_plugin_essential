@@ -436,7 +436,7 @@ class Main(Star):
             .use_t2i(False)
         )
 
-    @filter.regex(r"^(早安|晚安)")
+    @filter.regex(r".*(早安|晚安).*")
     async def good_morning(self, message: AstrMessageEvent):
         """和Bot说早晚安，记录睡眠时间，培养良好作息"""
         # CREDIT: 灵感部分借鉴自：https://github.com/MinatoAquaCrews/nonebot_plugin_morning
