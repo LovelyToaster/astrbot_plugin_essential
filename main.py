@@ -47,12 +47,12 @@ class Main(Star):
 
         self.search_anmime_demand_users = {}
         self.daily_sleep_cache = {}
-        self.good_morning_cd = {} 
+        self.good_morning_cd = {}
 
     def time_convert(self, t):
         m, s = divmod(t, 60)
         return f"{int(m)}分{int(s)}秒"
-    
+
     def get_cached_sleep_count(self, umo_id: str, date_str: str) -> int:
         """获取缓存的睡觉人数"""
         if umo_id not in self.daily_sleep_cache:
@@ -74,7 +74,7 @@ class Main(Star):
         """检查用户是否在CD中，返回True表示在CD中"""
         if user_id not in self.good_morning_cd:
             return False
-        
+
         last_time = self.good_morning_cd[user_id]
         time_diff = (current_time - last_time).total_seconds()
         return time_diff < 1800  # 硬编码30分钟
@@ -477,7 +477,7 @@ class Main(Star):
 
         with open(f"data/{self.PLUGIN_NAME}_data.json", "w", encoding="utf-8") as f:
             f.write(json.dumps(self.good_morning_data, ensure_ascii=False, indent=2))
-            
+
         # 更新CD
         self.update_good_morning_cd(user_id, curr_utc8)
 
@@ -495,7 +495,7 @@ class Main(Star):
                 ).day
                 if user_day == curr_day:
                     curr_day_sleeping += 1
-        
+
         # 更新缓存为最新计算结果
         self.update_sleep_cache(umo_id, curr_date_str, curr_day_sleeping)
 
@@ -529,3 +529,16 @@ class Main(Star):
                 )
                 .use_t2i(False)
             )
+
+    @filter.regex(r".*午安.*")
+    async def good_afternoon(self, message: AstrMessageEvent):
+        """和Bot说午安，简单回复"""
+        user_name = message.message_obj.sender.nickname
+        curr_utc8 = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+        curr_human = curr_utc8.strftime("%Y-%m-%d %H:%M:%S")
+
+        return (
+            CommandResult()
+            .message(f"午安喵，{user_name}！现在是 {curr_human}，祝你午后愉快~")
+            .use_t2i(False)
+        )
